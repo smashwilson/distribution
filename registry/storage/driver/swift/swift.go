@@ -769,7 +769,9 @@ func (w *writer) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("already cancelled")
 	}
 
+	fmt.Printf("Writing %d bytes to buffered writer ... ", len(p))
 	n, err := w.bw.Write(p)
+	fmt.Println("Written.")
 	w.size += int64(n)
 	return n, err
 }
@@ -869,10 +871,12 @@ func (sw *segmentWriter) Write(p []byte) (int, error) {
 		if offset+chunkSize > len(p) {
 			chunkSize = len(p) - offset
 		}
+		fmt.Printf("Writing %d bytes to Cloud Files at [%s] ... ", chunkSize, getSegmentPath(sw.segmentsPath, sw.segmentNumber))
 		_, err := sw.conn.ObjectPut(sw.container, getSegmentPath(sw.segmentsPath, sw.segmentNumber), bytes.NewReader(p[offset:offset+chunkSize]), false, "", contentType, nil)
 		if err != nil {
 			return n, err
 		}
+		fmt.Println("Written.")
 
 		sw.segmentNumber++
 		n += chunkSize
