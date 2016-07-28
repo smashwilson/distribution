@@ -280,6 +280,7 @@ func (d *driver) Name() string {
 
 // GetContent retrieves the content stored at "path" as a []byte.
 func (d *driver) GetContent(ctx context.Context, path string) ([]byte, error) {
+	fmt.Printf("GetContent called [%s]\n", path)
 	content, err := d.Conn.ObjectGetBytes(d.Container, d.swiftPath(path))
 	if err == swift.ObjectNotFound {
 		return nil, storagedriver.PathNotFoundError{Path: path}
@@ -289,6 +290,7 @@ func (d *driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 
 // PutContent stores the []byte content at a location designated by "path".
 func (d *driver) PutContent(ctx context.Context, path string, contents []byte) error {
+	fmt.Printf("PutContent called [%s]\n", path)
 	err := d.Conn.ObjectPutBytes(d.Container, d.swiftPath(path), contents, contentType)
 	if err == swift.ObjectNotFound {
 		return storagedriver.PathNotFoundError{Path: path}
@@ -690,6 +692,7 @@ func (d *driver) getAllSegments(path string) ([]swift.Object, error) {
 }
 
 func (d *driver) createManifest(path string, segments string) error {
+	fmt.Printf("Creating manifest: [%s]\n", path)
 	headers := make(swift.Headers)
 	headers["X-Object-Manifest"] = segments
 	manifest, err := d.Conn.ObjectCreate(d.Container, d.swiftPath(path), false, "", contentType, headers)
@@ -781,18 +784,23 @@ func (w *writer) Size() int64 {
 }
 
 func (w *writer) Close() error {
+	fmt.Printf("[close] Closing writer.\n")
 	if w.closed {
 		return fmt.Errorf("already closed")
 	}
 
+	fmt.Printf("[close] Flushing writer.\n")
 	if err := w.bw.Flush(); err != nil {
 		return err
 	}
 
 	if !w.committed && !w.cancelled {
+		fmt.Printf("[close] Creating manifest.\n")
 		if err := w.driver.createManifest(w.path, w.driver.Container+"/"+w.segmentsPath); err != nil {
 			return err
 		}
+
+		fmt.Printf("[close] Waiting for segments to show up.\n")
 		if err := w.waitForSegmentsToShowUp(); err != nil {
 			return err
 		}
@@ -813,6 +821,8 @@ func (w *writer) Cancel() error {
 }
 
 func (w *writer) Commit() error {
+	fmt.Printf("[commit] Beginning commit\n")
+
 	if w.closed {
 		return fmt.Errorf("already closed")
 	} else if w.committed {
@@ -821,15 +831,18 @@ func (w *writer) Commit() error {
 		return fmt.Errorf("already cancelled")
 	}
 
+	fmt.Printf("[commit] Flushing writer\n")
 	if err := w.bw.Flush(); err != nil {
 		return err
 	}
 
+	fmt.Printf("[commit] Creating manifest\n")
 	if err := w.driver.createManifest(w.path, w.driver.Container+"/"+w.segmentsPath); err != nil {
 		return err
 	}
 
 	w.committed = true
+	fmt.Printf("[commit] Waiting for segments to appear\n")
 	return w.waitForSegmentsToShowUp()
 }
 
@@ -851,6 +864,12 @@ func (w *writer) waitForSegmentsToShowUp() error {
 		}
 		time.Sleep(waitingTime)
 		waitingTime *= 2
+	}
+
+	if err == nil {
+		fmt.Printf("Segments showed up\n")
+	} else {
+		fmt.Printf("Timed out waiting for segments: %v\n", err)
 	}
 
 	return err
@@ -876,7 +895,7 @@ func (sw *segmentWriter) Write(p []byte) (int, error) {
 		if err != nil {
 			return n, err
 		}
-		fmt.Println("Written.")
+		fmt.Printf("\n[%s] Written.\n", getSegmentPath(sw.segmentsPath, sw.segmentNumber))
 
 		sw.segmentNumber++
 		n += chunkSize
